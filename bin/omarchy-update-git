@@ -1,6 +1,66 @@
 #!/bin/bash
 
-echo -e "\e[32mUpdate Omarchy\e[0m"
+# Configuration
+OMARCHY_PATH="/home/mkn/.local/share/omarchy" # Adjust to your actual Omarchy repo path
+UPSTREAM_MAIN_BRANCH="master"              # e.g., 'main' or 'master'
+MY_CUSTOM_BRANCH="personal-tweaks"     # The branch where your customizations live
 
-git -C $OMARCHY_PATH pull --autostash
-git -C $OMARCHY_PATH diff --check || git -C $OMARCHY_PATH reset --merge
+echo -e "\e[32mUpdating Omarchy and Rebasing Custom Tweaks\e[0m"
+
+# --- 1. Navigate to the Omarchy repository ---
+cd "$OMARCHY_PATH" || { echo -e "\e[31mError: Could not enter Omarchy directory.\e[0m"; exit 1; }
+
+# --- 2. Stash any temporary uncommitted changes on your custom branch (safer) ---
+# This is a good habit, even if your customizations are committed.
+# It handles any small, experimental changes you might have made since your last commit.
+echo -e "\e[34mChecking for uncommitted changes on $MY_CUSTOM_BRANCH...\e[0m"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo -e "\e[34mStashing uncommitted changes...\e[0m"
+    git stash push -u -m "Temporary stash before Omarchy rebase" || {
+        echo -e "\e[31mError: Failed to stash changes. Aborting.\e[0m"
+        exit 1
+    }
+fi
+
+# --- 3. Update your local main branch from upstream ---
+echo -e "\e[34mFetching and updating local $UPSTREAM_MAIN_BRANCH from upstream...\e[0m"
+git checkout "$UPSTREAM_MAIN_BRANCH" || { echo -e "\e[31mError: Could not switch to branch $UPSTREAM_MAIN_BRANCH. Aborting.\e[0m"; exit 1; }
+git pull upstream "$UPSTREAM_MAIN_BRANCH" || { echo -e "\e[31mError: Failed to pull from upstream. Aborting.\e[0m"; exit 1; }
+git push origin "$UPSTREAM_MAIN_BRANCH" || { echo -e "\e[31mError: Failed to push updated $UPSTREAM_MAIN_BRANCH to origin. Continuing, but you may want to check remote.\e[0m"; }
+
+
+# --- 4. Switch back to your custom branch and rebase ---
+echo -e "\e[34mSwitching to $MY_CUSTOM_BRANCH and rebasing...\e[0m"
+git checkout "$MY_CUSTOM_BRANCH" || { echo -e "\e[31mError: Could not switch to branch $MY_CUSTOM_BRANCH. Aborting.\e[0m"; exit 1; }
+echo -e "\e[33m(NOTE: If conflicts occur during rebase, resolve them, then 'git add <file>' and 'git rebase --continue')\e[0m"
+git rebase "$UPSTREAM_MAIN_BRANCH"
+REBASE_STATUS=$?
+
+if [ $REBASE_STATUS -ne 0 ]; then
+    echo -e "\e[31mRebase encountered conflicts or failed! Please resolve manually.\e[0m"
+    echo "  1. Resolve conflicts in your editor (look for <<<<<<<, =======, >>>>>>>)."
+    echo "  2. For each resolved file: git add <file>"
+    echo "  3. Once all conflicts are staged: git rebase --continue"
+    echo "  4. To abort: git rebase --abort"
+    exit $REBASE_STATUS
+else
+    echo -e "\e[32mRebase completed successfully.\e[0m"
+fi
+
+# --- 5. Push the rebased custom branch to your fork (force push) ---
+echo -e "\e[34mPushing rebased $MY_CUSTOM_BRANCH to your fork with --force...\e[0m"
+git push origin "$MY_CUSTOM_BRANCH" --force || { echo -e "\e[31mError: Failed to push to origin. Check your connection or Git configuration.\e[0m"; exit 1; }
+echo -e "\e[32mCustom branch $MY_CUSTOM_BRANCH pushed successfully.\e[0m"
+
+# --- 6. Apply stashed changes back (if any) ---
+if git stash list | grep -q "Temporary stash before Omarchy rebase"; then
+    echo -e "\e[34mApplying stashed changes...\e[0m"
+    git stash pop || {
+        echo -e "\e[33mWarning: Failed to pop stash. You might have conflicts to resolve.\e[0m"
+        echo "Check 'git status' and 'git stash list'."
+    }
+else
+    echo -e "\e[34mNo previous stash to apply.\e[0m"
+fi
+
+echo -e "\e[32mOmarchy update and custom tweaks rebased finished!\e[0m"
