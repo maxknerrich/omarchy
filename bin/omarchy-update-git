@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Configuration
 OMARCHY_PATH="/home/mkn/.local/share/omarchy" # Adjust to your actual Omarchy repo path
 UPSTREAM_MAIN_BRANCH="master"              # e.g., 'main' or 'master'
